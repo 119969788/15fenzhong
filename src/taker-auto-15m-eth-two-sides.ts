@@ -30,6 +30,28 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const toNum = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
 
 /**
+ * 格式化数字，保留指定小数位
+ * @param num 数字
+ * @param decimals 小数位数
+ * @returns 格式化后的字符串
+ */
+const formatNum = (num: number, decimals = 4): string => {
+  if (!Number.isFinite(num)) return "N/A";
+  return num.toFixed(decimals);
+};
+
+/**
+ * 格式化地址，显示前6位和后4位
+ * @param address 钱包地址
+ * @returns 格式化后的地址
+ */
+const formatAddress = (address: string): string => {
+  if (!address) return "N/A";
+  if (address.length < 10) return address;
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+};
+
+/**
  * 订单类型：FOK (Fill-or-Kill) 或 FAK (Fill-and-Kill)
  */
 type OrderType = "FOK" | "FAK";
@@ -116,6 +138,40 @@ async function main() {
   let downTokenId: string | null = null;       // Down 方向的代币 ID
 
   /**
+   * 获取钱包 USDC 余额
+   * @returns USDC 余额
+   */
+  async function getUSDCBalance(): Promise<number> {
+    if (!me) return 0;
+    try {
+      // USDC 在 Polygon 上的合约地址
+      const USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
+      const balance = await (sdk as any).wallet?.getBalance?.(USDC_ADDRESS) || 
+                      await (sdk as any).getBalance?.(USDC_ADDRESS);
+      // USDC 有 6 位小数
+      return toNum(balance) / 1e6;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /**
+   * 获取钱包 MATIC 余额
+   * @returns MATIC 余额
+   */
+  async function getMATICBalance(): Promise<number> {
+    if (!me) return 0;
+    try {
+      const balance = await (sdk as any).wallet?.getBalance?.() || 
+                      await (sdk as any).getBalance?.();
+      // MATIC 有 18 位小数
+      return toNum(balance) / 1e18;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /**
    * 刷新市场信息：检查是否有新的市场，如果有则切换到新市场
    * @param force 是否强制刷新（即使市场 slug 没有变化）
    */
@@ -154,8 +210,14 @@ async function main() {
     downTokenId = String(down.tokenId);
 
     // 输出市场信息
-    console.log(`[MARKET] slug=${latest}`);
-    console.log({ wallet: me || "(unknown)", conditionId, upTokenId, downTokenId });
+    console.log(`\n${"=".repeat(60)}`);
+    console.log(`📊 [MARKET] 市场切换`);
+    console.log(`${"=".repeat(60)}`);
+    console.log(`市场 Slug: ${latest}`);
+    console.log(`条件 ID: ${conditionId}`);
+    console.log(`Up 代币: ${upTokenId}`);
+    console.log(`Down 代币: ${downTokenId}`);
+    console.log(`${"=".repeat(60)}\n`);
   }
 
   /**
@@ -186,7 +248,9 @@ async function main() {
       amount: usdcAmount,  // 花费的 USDC 数量
       orderType: ORDER_TYPE, // FOK 或 FAK
     });
-    console.log(`[BUY] token=${tokenId} $=${usdcAmount} type=${ORDER_TYPE} id=${res?.id || res?.orderId || "?"}`);
+    const direction = tokenId === upTokenId ? "UP" : "DOWN";
+    const orderId = res?.id || res?.orderId || "?";
+    console.log(`\n🟢 [买入] ${direction} | 金额: $${formatNum(usdcAmount, 2)} | 类型: ${ORDER_TYPE} | 订单ID: ${orderId}`);
   }
 
   /**
@@ -202,28 +266,44 @@ async function main() {
       amount: shares,  // 卖出的份额数量
       orderType: ORDER_TYPE, // FOK 或 FAK
     });
-    console.log(`[SELL] token=${tokenId} shares=${shares} type=${ORDER_TYPE} id=${res?.id || res?.orderId || "?"}`);
+    const direction = tokenId === upTokenId ? "UP" : "DOWN";
+    const orderId = res?.id || res?.orderId || "?";
+    console.log(`\n🔴 [卖出] ${direction} | 数量: ${formatNum(shares, 2)} | 类型: ${ORDER_TYPE} | 订单ID: ${orderId}`);
   }
 
   // 上次刷新市场的时间戳
   let lastRefresh = 0;
+  // 上次显示余额的时间戳（每30秒显示一次）
+  let lastBalanceDisplay = 0;
+  const BALANCE_DISPLAY_INTERVAL = 30000; // 30秒
 
   // 初始化：强制刷新一次市场信息
   await refreshMarketIfNeeded(true);
 
+  // 获取并显示钱包余额
+  const usdcBalance = await getUSDCBalance();
+  const maticBalance = await getMATICBalance();
+
   // 输出启动信息和配置
-  console.log("\n=== AUTO 15m ETH 双边吃单启动 ===");
-  console.log({
-    prefix,
-    BUY_PRICE,
-    SELL_PRICE,
-    BUY_USDC,
-    SELL_SHARES,
-    MAX_POS_EACH,
-    ORDER_TYPE,
-    POLL_MS,
-    REFRESH_SLUG_MS,
-  });
+  console.log("\n" + "=".repeat(60));
+  console.log("🤖 ETH 15分钟 Up/Down 自动交易机器人");
+  console.log("=".repeat(60));
+  console.log(`\n💰 钱包信息:`);
+  console.log(`   地址: ${me ? formatAddress(me) : "N/A"} (${me || "N/A"})`);
+  console.log(`   USDC: $${formatNum(usdcBalance, 2)}`);
+  console.log(`   MATIC: ${formatNum(maticBalance, 4)}`);
+  console.log(`\n⚙️  交易配置:`);
+  console.log(`   市场前缀: ${prefix}`);
+  console.log(`   买入价格阈值: ${BUY_PRICE}`);
+  console.log(`   卖出价格阈值: ${SELL_PRICE}`);
+  console.log(`   每次买入金额: $${BUY_USDC}`);
+  console.log(`   每次卖出数量: ${SELL_SHARES}`);
+  console.log(`   最大持仓限制: ${MAX_POS_EACH}`);
+  console.log(`   订单类型: ${ORDER_TYPE}`);
+  console.log(`   轮询间隔: ${POLL_MS}ms`);
+  console.log(`   市场刷新间隔: ${REFRESH_SLUG_MS}ms`);
+  console.log("\n" + "=".repeat(60));
+  console.log("✅ 机器人已启动，开始监控市场...\n");
 
   // ========== 主循环：持续监控和执行交易 ==========
   while (true) {
@@ -242,6 +322,14 @@ async function main() {
         continue;
       }
 
+      // 定期显示余额（每30秒）
+      if (now - lastBalanceDisplay >= BALANCE_DISPLAY_INTERVAL) {
+        lastBalanceDisplay = now;
+        const currentUSDC = await getUSDCBalance();
+        const currentMATIC = await getMATICBalance();
+        console.log(`\n💰 余额更新 | USDC: $${formatNum(currentUSDC, 2)} | MATIC: ${formatNum(currentMATIC, 4)}`);
+      }
+
       // 获取订单簿信息
       const ob = await sdk.markets.getProcessedOrderbook(conditionId);
       // 最佳买价（最高出价）：用于卖出
@@ -249,11 +337,15 @@ async function main() {
       // 最佳卖价（最低要价）：用于买入
       const bestAsk = toNum(ob?.bestAsk?.price ?? ob?.asks?.[0]?.price, NaN);
 
-      // 输出当前价格信息
+      // 获取持仓信息
+      const upPos = await getPos(upTokenId!);
+      const downPos = await getPos(downTokenId!);
+
+      // 输出当前价格和持仓信息
+      const timeStr = new Date().toLocaleTimeString('zh-CN');
       console.log(
-        `[TICK] slug=${currentSlug} bestBid=${Number.isFinite(bestBid) ? bestBid.toFixed(4) : "NA"} bestAsk=${
-          Number.isFinite(bestAsk) ? bestAsk.toFixed(4) : "NA"
-        }`
+        `[${timeStr}] 📈 价格 | Bid: ${formatNum(bestBid)} | Ask: ${formatNum(bestAsk)} | ` +
+        `持仓: UP=${formatNum(upPos, 2)} DOWN=${formatNum(downPos, 2)}`
       );
 
       // 遍历 Up 和 Down 两个方向的代币
