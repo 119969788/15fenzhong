@@ -193,8 +193,19 @@ async function main() {
     rpcUrl: process.env.POLYGON_RPC_URL,
   });
 
+  // 验证 SDK 服务是否正常初始化
+  console.log("\n[INIT] 检查 SDK 服务...");
+  console.log(`  markets: ${sdk.markets ? "✅" : "❌"}`);
+  console.log(`  trading: ${(sdk as any).trading ? "✅" : "❌"}`);
+  console.log(`  tradingService: ${(sdk as any).tradingService ? "✅" : "❌"}`);
+  console.log(`  dataApi: ${(sdk as any).dataApi ? "✅" : "❌"}`);
+  
   // 获取当前钱包地址
   const me = (sdk as any).wallet?.address || (sdk as any).address;
+  
+  if (!me) {
+    console.log("\n[WARN] 无法获取钱包地址，某些功能可能不可用");
+  }
 
   // ========== 市场状态变量 ==========
   let currentSlug: string | null = null;      // 当前交易的市场 slug
@@ -360,16 +371,29 @@ async function main() {
    * @param usdcAmount 花费的 USDC 数量
    */
   async function takerBuy(tokenId: string, usdcAmount: number) {
-    // 创建市价买入订单（吃单）
-    const res = await (sdk as any).trading.createMarketOrder({
-      tokenId,
-      side: "BUY",
-      amount: usdcAmount,  // 花费的 USDC 数量
-      orderType: ORDER_TYPE, // FOK 或 FAK
-    });
-    const direction = tokenId === upTokenId ? "UP" : "DOWN";
-    const orderId = res?.id || res?.orderId || "?";
-    console.log(`\n🟢 [买入] ${direction} | 金额: $${formatNum(usdcAmount, 2)} | 类型: ${ORDER_TYPE} | 订单ID: ${orderId}`);
+    try {
+      // 使用 TradingService 创建市价买入订单（吃单）
+      // 参考: https://github.com/cyl19970726/poly-sdk/blob/main/README.zh-CN.md
+      const tradingService = (sdk as any).trading || (sdk as any).tradingService;
+      
+      if (!tradingService) {
+        throw new Error("TradingService 未初始化，请检查 SDK 配置");
+      }
+
+      const res = await tradingService.createMarketOrder({
+        tokenId,
+        side: "BUY",
+        amount: usdcAmount,  // 花费的 USDC 数量
+        orderType: ORDER_TYPE, // FOK 或 FAK
+      });
+      
+      const direction = tokenId === upTokenId ? "UP" : "DOWN";
+      const orderId = res?.id || res?.orderId || res?.order_id || "?";
+      console.log(`\n🟢 [买入] ${direction} | 金额: $${formatNum(usdcAmount, 2)} | 类型: ${ORDER_TYPE} | 订单ID: ${orderId}`);
+    } catch (e: any) {
+      console.log(`\n[ERR] 买入失败: ${e?.message || e}`);
+      throw e;
+    }
   }
 
   /**
@@ -378,16 +402,29 @@ async function main() {
    * @param shares 卖出的份额数量
    */
   async function takerSell(tokenId: string, shares: number) {
-    // 创建市价卖出订单（吃单）
-    const res = await (sdk as any).trading.createMarketOrder({
-      tokenId,
-      side: "SELL",
-      amount: shares,  // 卖出的份额数量
-      orderType: ORDER_TYPE, // FOK 或 FAK
-    });
-    const direction = tokenId === upTokenId ? "UP" : "DOWN";
-    const orderId = res?.id || res?.orderId || "?";
-    console.log(`\n🔴 [卖出] ${direction} | 数量: ${formatNum(shares, 2)} | 类型: ${ORDER_TYPE} | 订单ID: ${orderId}`);
+    try {
+      // 使用 TradingService 创建市价卖出订单（吃单）
+      // 参考: https://github.com/cyl19970726/poly-sdk/blob/main/README.zh-CN.md
+      const tradingService = (sdk as any).trading || (sdk as any).tradingService;
+      
+      if (!tradingService) {
+        throw new Error("TradingService 未初始化，请检查 SDK 配置");
+      }
+
+      const res = await tradingService.createMarketOrder({
+        tokenId,
+        side: "SELL",
+        amount: shares,  // 卖出的份额数量
+        orderType: ORDER_TYPE, // FOK 或 FAK
+      });
+      
+      const direction = tokenId === upTokenId ? "UP" : "DOWN";
+      const orderId = res?.id || res?.orderId || res?.order_id || "?";
+      console.log(`\n🔴 [卖出] ${direction} | 数量: ${formatNum(shares, 2)} | 类型: ${ORDER_TYPE} | 订单ID: ${orderId}`);
+    } catch (e: any) {
+      console.log(`\n[ERR] 卖出失败: ${e?.message || e}`);
+      throw e;
+    }
   }
 
   // 上次刷新市场的时间戳
