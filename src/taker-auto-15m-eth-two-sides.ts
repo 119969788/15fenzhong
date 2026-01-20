@@ -242,6 +242,7 @@ async function main() {
 
     // 获取初始价格信息用于显示赔率
     let initialOdds = "";
+    let marketStatus = "";
     try {
       const ob = await sdk.markets.getProcessedOrderbook(conditionId);
       const bestBid = toNum(ob?.bestBid?.price ?? ob?.bids?.[0]?.price, NaN);
@@ -253,9 +254,12 @@ async function main() {
         const upProb = formatProbability(midPrice);
         const downProb = formatProbability(1 - midPrice);
         initialOdds = ` | 赔率: UP ${upOdds} (${upProb}) / DOWN ${downOdds} (${downProb})`;
+        marketStatus = "✅ 市场活跃";
+      } else {
+        marketStatus = "⚠️  订单簿暂无数据（市场可能尚未开始交易）";
       }
-    } catch (e) {
-      // 忽略错误，继续显示其他信息
+    } catch (e: any) {
+      marketStatus = `❌ 无法获取订单簿: ${e?.message || "未知错误"}`;
     }
 
     // 输出市场信息
@@ -263,6 +267,7 @@ async function main() {
     console.log(`📊 [MARKET] 市场切换`);
     console.log(`${"=".repeat(60)}`);
     console.log(`市场 Slug: ${latest}${initialOdds}`);
+    console.log(`市场状态: ${marketStatus}`);
     console.log(`条件 ID: ${conditionId}`);
     console.log(`Up 代币: ${upTokenId}`);
     console.log(`Down 代币: ${downTokenId}`);
@@ -325,6 +330,11 @@ async function main() {
   // 上次显示余额的时间戳（每30秒显示一次）
   let lastBalanceDisplay = 0;
   const BALANCE_DISPLAY_INTERVAL = 30000; // 30秒
+  // 上次显示无数据警告的时间戳（每10秒显示一次）
+  let lastNoDataWarning = 0;
+  const NO_DATA_WARNING_INTERVAL = 10000; // 10秒
+  // 连续无数据计数
+  let noDataCount = 0;
 
   // 初始化：强制刷新一次市场信息
   await refreshMarketIfNeeded(true);
@@ -380,11 +390,43 @@ async function main() {
       }
 
       // 获取订单簿信息
-      const ob = await sdk.markets.getProcessedOrderbook(conditionId);
+      let ob;
+      try {
+        ob = await sdk.markets.getProcessedOrderbook(conditionId);
+      } catch (e: any) {
+        console.log(`[ERR] 获取订单簿失败: ${e?.message || e}`);
+        await sleep(POLL_MS);
+        continue;
+      }
+
       // 最佳买价（最高出价）：用于卖出
       const bestBid = toNum(ob?.bestBid?.price ?? ob?.bids?.[0]?.price, NaN);
       // 最佳卖价（最低要价）：用于买入
       const bestAsk = toNum(ob?.bestAsk?.price ?? ob?.asks?.[0]?.price, NaN);
+
+      // 检查是否有有效价格数据
+      const hasValidPrice = Number.isFinite(bestBid) || Number.isFinite(bestAsk);
+      
+      if (!hasValidPrice) {
+        // 订单簿无数据，减少输出频率
+        noDataCount++;
+        if (now - lastNoDataWarning >= NO_DATA_WARNING_INTERVAL) {
+          lastNoDataWarning = now;
+          const timeStr = new Date().toLocaleTimeString('zh-CN');
+          console.log(
+            `[${timeStr}] ⚠️  订单簿暂无数据 | 市场: ${currentSlug} | 连续无数据: ${noDataCount} 次`
+          );
+          console.log(`         提示: 市场可能尚未开始交易或已关闭，请检查市场状态`);
+        }
+        await sleep(POLL_MS);
+        continue;
+      }
+
+      // 有有效数据，重置计数
+      if (noDataCount > 0) {
+        console.log(`✅ 订单簿数据已恢复`);
+        noDataCount = 0;
+      }
 
       // 计算中间价（用于显示赔率）
       const midPrice = Number.isFinite(bestBid) && Number.isFinite(bestAsk) 
