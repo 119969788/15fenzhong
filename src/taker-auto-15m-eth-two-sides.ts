@@ -274,43 +274,56 @@ async function main() {
     upTokenId = String(up.tokenId);
     downTokenId = String(down.tokenId);
 
-    // 获取市场元数据用于诊断
+    // 获取市场元数据用于诊断（使用 MarketService）
     let marketMeta = "";
+    let initialOdds = "";
+    let marketStatus = "";
     try {
+      // 使用 MarketService 获取市场信息
       const market = await sdk.markets.getMarket(latest);
       marketMeta = JSON.stringify({
         active: market?.active,
         closed: market?.closed,
         startDate: market?.startDate,
         endDate: market?.endDate,
+        volume24h: market?.volume24h,
+        liquidity: market?.liquidity,
       });
-    } catch (e: any) {
-      marketMeta = `无法获取市场元数据: ${e?.message || "未知错误"}`;
-    }
 
-    // 获取初始价格信息用于显示赔率（使用 realtimeSpread）
-    let initialOdds = "";
-    let marketStatus = "";
-    try {
-      const sp = await sdk.markets.getRealtimeSpread(conditionId);
-      const yesBid = Number(sp?.yesBid);
-      const yesAsk = Number(sp?.yesAsk);
-      const noBid = Number(sp?.noBid);
-      const noAsk = Number(sp?.noAsk);
-      
-      if (Number.isFinite(yesBid) && Number.isFinite(yesAsk)) {
-        const midPrice = (yesBid + yesAsk) / 2;
-        const upOdds = formatOdds(midPrice);
-        const downOdds = formatOdds(1 - midPrice);
-        const upProb = formatProbability(midPrice);
-        const downProb = formatProbability(1 - midPrice);
-        initialOdds = ` | 赔率: UP ${upOdds} (${upProb}) / DOWN ${downOdds} (${downProb})`;
-        marketStatus = "✅ 市场活跃";
-      } else {
-        marketStatus = "⚠️  盘口暂无数据（市场可能尚未开始交易）";
+      // 获取初始价格信息用于显示赔率（使用 getRealtimeSpread）
+      try {
+        const sp = await sdk.markets.getRealtimeSpread(conditionId);
+        const yesBid = Number.isFinite(Number(sp?.yesBid)) ? Number(sp.yesBid) : NaN;
+        const yesAsk = Number.isFinite(Number(sp?.yesAsk)) ? Number(sp.yesAsk) : NaN;
+        const noBid = Number.isFinite(Number(sp?.noBid)) ? Number(sp.noBid) : NaN;
+        const noAsk = Number.isFinite(Number(sp?.noAsk)) ? Number(sp.noAsk) : NaN;
+        
+        if (Number.isFinite(yesBid) && Number.isFinite(yesAsk)) {
+          const midPrice = (yesBid + yesAsk) / 2;
+          const upOdds = formatOdds(midPrice);
+          const downOdds = formatOdds(1 - midPrice);
+          const upProb = formatProbability(midPrice);
+          const downProb = formatProbability(1 - midPrice);
+          initialOdds = ` | 赔率: UP ${upOdds} (${upProb}) / DOWN ${downOdds} (${downProb})`;
+          marketStatus = "✅ 市场活跃，盘口正常";
+        } else if (Number.isFinite(noBid) && Number.isFinite(noAsk)) {
+          // 如果只有 NO 方向有数据，使用 NO 价格计算
+          const midPrice = (noBid + noAsk) / 2;
+          const downOdds = formatOdds(midPrice);
+          const upOdds = formatOdds(1 - midPrice);
+          const downProb = formatProbability(midPrice);
+          const upProb = formatProbability(1 - midPrice);
+          initialOdds = ` | 赔率: UP ${upOdds} (${upProb}) / DOWN ${downOdds} (${downProb})`;
+          marketStatus = "⚠️  仅 NO 方向有盘口数据";
+        } else {
+          marketStatus = "⚠️  盘口暂无数据（市场可能尚未开始交易）";
+        }
+      } catch (e: any) {
+        marketStatus = `❌ 无法获取盘口: ${e?.message || "未知错误"}`;
       }
     } catch (e: any) {
-      marketStatus = `❌ 无法获取盘口: ${e?.message || "未知错误"}`;
+      marketMeta = `无法获取市场元数据: ${e?.message || "未知错误"}`;
+      marketStatus = "❌ 无法获取市场信息";
     }
 
     // 输出市场信息
@@ -438,21 +451,41 @@ async function main() {
         console.log(`\n💰 余额更新 | USDC: $${formatNum(currentUSDC, 2)} | MATIC: ${formatNum(currentMATIC, 4)}`);
       }
 
-      // 获取实时盘口（使用 getRealtimeSpread）
+      // 获取实时盘口（使用 MarketService 的 getRealtimeSpread，这是 SDK 推荐的方法）
+      // 参考: https://github.com/cyl19970726/poly-sdk/blob/main/README.zh-CN.md
       let sp;
       try {
+        // 使用 MarketService 获取实时价差（最稳定的盘口快照）
         sp = await sdk.markets.getRealtimeSpread(conditionId);
       } catch (e: any) {
-        console.log(`[${ts()}] [ERR] 获取盘口失败: ${e?.message || e}`);
-        await sleep(POLL_MS);
-        continue;
+        // 如果 getRealtimeSpread 失败，尝试使用 getProcessedOrderbook 作为备选
+        try {
+          const ob = await sdk.markets.getProcessedOrderbook(conditionId);
+          // 从 ProcessedOrderbook 提取 bid/ask
+          const yesBid = toNum(ob?.yesBid?.price ?? ob?.bids?.yes?.[0]?.price, NaN);
+          const yesAsk = toNum(ob?.yesAsk?.price ?? ob?.asks?.yes?.[0]?.price, NaN);
+          const noBid = toNum(ob?.noBid?.price ?? ob?.bids?.no?.[0]?.price, NaN);
+          const noAsk = toNum(ob?.noAsk?.price ?? ob?.asks?.no?.[0]?.price, NaN);
+          
+          // 如果从 orderbook 获取到数据，使用它
+          if (Number.isFinite(yesBid) || Number.isFinite(yesAsk)) {
+            sp = { yesBid, yesAsk, noBid, noAsk };
+          } else {
+            throw new Error("无法从 orderbook 获取有效数据");
+          }
+        } catch (e2: any) {
+          console.log(`[${ts()}] [ERR] 获取盘口失败: ${e?.message || e} | 备选方案也失败: ${e2?.message || e2}`);
+          await sleep(POLL_MS);
+          continue;
+        }
       }
 
       // 从 realtimeSpread 获取 YES/NO 两边的 bid/ask
-      const yesBid = Number(sp?.yesBid);
-      const yesAsk = Number(sp?.yesAsk);
-      const noBid = Number(sp?.noBid);
-      const noAsk = Number(sp?.noAsk);
+      // 确保数据类型正确
+      const yesBid = Number.isFinite(Number(sp?.yesBid)) ? Number(sp.yesBid) : NaN;
+      const yesAsk = Number.isFinite(Number(sp?.yesAsk)) ? Number(sp.yesAsk) : NaN;
+      const noBid = Number.isFinite(Number(sp?.noBid)) ? Number(sp.noBid) : NaN;
+      const noAsk = Number.isFinite(Number(sp?.noAsk)) ? Number(sp.noAsk) : NaN;
 
       // 获取持仓信息
       const posUp = await getPos(upTokenId!);
@@ -490,37 +523,40 @@ async function main() {
         );
       }
 
-      // 使用 YES 价格进行交易判断（YES = UP）
-      const bestBid = yesBid; // 用于卖出
-      const bestAsk = yesAsk; // 用于买入
+      // 使用 YES/NO 价格进行交易判断
+      // YES = UP 方向，NO = DOWN 方向
+      const yesBidForTrade = Number.isFinite(yesBid) ? yesBid : NaN;
+      const yesAskForTrade = Number.isFinite(yesAsk) ? yesAsk : NaN;
+      const noBidForTrade = Number.isFinite(noBid) ? noBid : NaN;
+      const noAskForTrade = Number.isFinite(noAsk) ? noAsk : NaN;
 
       // 交易逻辑：只处理 UP 方向（YES），DOWN 方向逻辑相同但使用 NO 价格
       // 注意：这里简化处理，主要交易 UP 方向
       // 如果需要同时交易两个方向，可以分别使用 yesBid/yesAsk 和 noBid/noAsk
 
-      // ========== UP 方向交易逻辑 ==========
+      // ========== UP 方向交易逻辑（使用 YES 价格）==========
       const upPos = posUp;
 
       // 卖出逻辑：有持仓 && YES bid 有效 && YES bid >= 卖出价格阈值
-      if (upPos > 0 && Number.isFinite(bestBid) && bestBid >= SELL_PRICE) {
+      if (upPos > 0 && Number.isFinite(yesBidForTrade) && yesBidForTrade >= SELL_PRICE) {
         const qty = Math.min(upPos, SELL_SHARES);
         if (qty > 0) await takerSell(upTokenId!, qty);
       }
       // 买入逻辑：持仓未达到上限 && YES ask 有效 && YES ask <= 买入价格阈值
-      else if (upPos < MAX_POS_EACH && Number.isFinite(bestAsk) && bestAsk <= BUY_PRICE) {
+      else if (upPos < MAX_POS_EACH && Number.isFinite(yesAskForTrade) && yesAskForTrade <= BUY_PRICE) {
         await takerBuy(upTokenId!, BUY_USDC);
       }
 
-      // ========== DOWN 方向交易逻辑 ==========
+      // ========== DOWN 方向交易逻辑（使用 NO 价格）==========
       const downPos = posDown;
 
       // 卖出逻辑：有持仓 && NO bid 有效 && NO bid >= 卖出价格阈值
-      if (downPos > 0 && Number.isFinite(noBid) && noBid >= SELL_PRICE) {
+      if (downPos > 0 && Number.isFinite(noBidForTrade) && noBidForTrade >= SELL_PRICE) {
         const qty = Math.min(downPos, SELL_SHARES);
         if (qty > 0) await takerSell(downTokenId!, qty);
       }
       // 买入逻辑：持仓未达到上限 && NO ask 有效 && NO ask <= 买入价格阈值
-      else if (downPos < MAX_POS_EACH && Number.isFinite(noAsk) && noAsk <= BUY_PRICE) {
+      else if (downPos < MAX_POS_EACH && Number.isFinite(noAskForTrade) && noAskForTrade <= BUY_PRICE) {
         await takerBuy(downTokenId!, BUY_USDC);
       }
     } catch (e: any) {
