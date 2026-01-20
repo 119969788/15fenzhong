@@ -155,7 +155,7 @@ module.exports = {
 };
 "@
     
-    $ecosystemConfig | Out-File -FilePath "ecosystem.config.js" -Encoding UTF8
+    $ecosystemConfig | Out-File -FilePath "ecosystem.config.cjs" -Encoding UTF8
     
     # 创建日志目录
     if (-not (Test-Path logs)) {
@@ -176,7 +176,7 @@ function Start-Service {
         pm2 delete 15fenzhong 2>$null
         
         # 启动服务
-        pm2 start ecosystem.config.js
+        pm2 start ecosystem.config.cjs
         
         # 保存 PM2 配置
         pm2 save

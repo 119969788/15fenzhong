@@ -1,6 +1,6 @@
 # PM2 快速修复指南
 
-## 问题：找不到 ecosystem.config.js
+## 问题：找不到 ecosystem.config.cjs
 
 ### 原因
 你不在项目目录中，或者项目还没有克隆。
@@ -37,14 +37,14 @@ git clone https://github.com/119969788/15fenzhong.git
 cd 15fenzhong
 ```
 
-#### 步骤 4: 检查 ecosystem.config.js 是否存在
+#### 步骤 4: 检查 ecosystem.config.cjs 是否存在
 
 ```bash
 # 检查文件是否存在
-ls -la ecosystem.config.js
+ls -la ecosystem.config.cjs
 
 # 如果不存在，创建它
-cat > ecosystem.config.js << 'EOF'
+cat > ecosystem.config.cjs << 'EOF'
 module.exports = {
   apps: [{
     name: '15fenzhong',
@@ -93,10 +93,10 @@ nano .env
 
 ```bash
 # 确保在项目目录中
-pwd  # 应该显示包含 ecosystem.config.js 的目录
+pwd  # 应该显示包含 ecosystem.config.cjs 的目录
 
 # 启动服务
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 
 # 查看状态
 pm2 status
@@ -118,11 +118,11 @@ pm2 save
 
 ## 完整的一键修复命令
 
-如果你已经在项目目录中，但缺少 ecosystem.config.js，运行：
+如果你已经在项目目录中，但缺少 ecosystem.config.cjs，运行：
 
 ```bash
-# 创建 ecosystem.config.js
-cat > ecosystem.config.js << 'EOF'
+# 创建 ecosystem.config.cjs
+cat > ecosystem.config.cjs << 'EOF'
 module.exports = {
   apps: [{
     name: '15fenzhong',
@@ -148,7 +148,7 @@ EOF
 mkdir -p logs
 
 # 启动服务
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 pm2 save
 ```
 
@@ -171,11 +171,11 @@ pm2 logs 15fenzhong
 
 ## 常见错误
 
-### 错误 1: "File ecosystem.config.js not found"
+### 错误 1: "File ecosystem.config.cjs not found"
 **解决**: 确保在项目根目录中，并且文件存在
 
 ### 错误 2: "PM2 is not managing any process"
-**解决**: 先运行 `pm2 start ecosystem.config.js`，然后再 `pm2 save`
+**解决**: 先运行 `pm2 start ecosystem.config.cjs`，然后再 `pm2 save`
 
 ### 错误 3: "Cannot find module"
 **解决**: 运行 `npm install` 安装依赖

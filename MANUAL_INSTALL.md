@@ -205,7 +205,7 @@ npm run dev
 
 ```bash
 # 启动服务（使用配置文件）
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 
 # 查看服务状态
 pm2 status
@@ -304,7 +304,7 @@ npm run dev
 
 ```powershell
 # 启动服务
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 
 # 查看状态
 pm2 status

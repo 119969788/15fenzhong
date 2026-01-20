@@ -162,7 +162,7 @@ setup_pm2() {
     echo -e "${YELLOW}正在配置 PM2...${NC}"
     
     # 创建 PM2 生态系统文件
-    cat > ecosystem.config.js << 'EOF'
+    cat > ecosystem.config.cjs << 'EOF'
 module.exports = {
   apps: [{
     name: '15fenzhong',
@@ -201,7 +201,7 @@ start_service() {
         pm2 delete 15fenzhong 2>/dev/null || true
         
         # 启动服务
-        pm2 start ecosystem.config.js
+        pm2 start ecosystem.config.cjs
         
         # 保存 PM2 配置
         pm2 save
@@ -226,7 +226,7 @@ start_service() {
     else
         echo -e "${YELLOW}稍后可以使用以下命令启动:${NC}"
         echo "  cd $(pwd)"
-        echo "  pm2 start ecosystem.config.js"
+        echo "  pm2 start ecosystem.config.cjs"
         echo "  pm2 save"
         echo "  sudo pm2 startup systemd -u $USER --hp $HOME"
     fi

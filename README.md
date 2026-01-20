@@ -45,7 +45,7 @@ cp .env.example .env
 npm run dev
 
 # 或使用 PM2 后台运行
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 pm2 save
 ```
 
@@ -73,7 +73,7 @@ npm run dev
 
 ### 生产模式（后台运行，推荐）
 ```bash
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 pm2 save
 ```
 

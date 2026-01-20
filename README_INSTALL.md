@@ -62,7 +62,7 @@ cp .env.example .env
 nano .env  # 编辑并填入私钥
 
 # 6. 启动服务
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 pm2 save
 sudo pm2 startup systemd -u $USER --hp $HOME
 ```
@@ -116,7 +116,7 @@ Copy-Item .env.example .env
 notepad .env  # 编辑并填入私钥
 
 # 6. 启动服务
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 pm2 save
 ```
 
