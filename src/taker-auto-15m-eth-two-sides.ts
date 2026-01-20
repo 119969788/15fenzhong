@@ -52,6 +52,37 @@ const formatAddress = (address: string): string => {
 };
 
 /**
+ * 计算赔率（回报倍数）
+ * @param price 价格（0-1之间）
+ * @returns 赔率倍数，如果价格无效返回 NaN
+ */
+const calculateOdds = (price: number): number => {
+  if (!Number.isFinite(price) || price <= 0 || price >= 1) return NaN;
+  return 1 / price;
+};
+
+/**
+ * 格式化赔率显示
+ * @param price 价格（0-1之间）
+ * @returns 格式化的赔率字符串
+ */
+const formatOdds = (price: number): string => {
+  const odds = calculateOdds(price);
+  if (!Number.isFinite(odds)) return "N/A";
+  return `${odds.toFixed(2)}x`;
+};
+
+/**
+ * 格式化概率显示（百分比）
+ * @param price 价格（0-1之间）
+ * @returns 格式化的概率字符串
+ */
+const formatProbability = (price: number): string => {
+  if (!Number.isFinite(price)) return "N/A";
+  return `${(price * 100).toFixed(2)}%`;
+};
+
+/**
  * 订单类型：FOK (Fill-or-Kill) 或 FAK (Fill-and-Kill)
  */
 type OrderType = "FOK" | "FAK";
@@ -209,11 +240,29 @@ async function main() {
     upTokenId = String(up.tokenId);
     downTokenId = String(down.tokenId);
 
+    // 获取初始价格信息用于显示赔率
+    let initialOdds = "";
+    try {
+      const ob = await sdk.markets.getProcessedOrderbook(conditionId);
+      const bestBid = toNum(ob?.bestBid?.price ?? ob?.bids?.[0]?.price, NaN);
+      const bestAsk = toNum(ob?.bestAsk?.price ?? ob?.asks?.[0]?.price, NaN);
+      if (Number.isFinite(bestBid) && Number.isFinite(bestAsk)) {
+        const midPrice = (bestBid + bestAsk) / 2;
+        const upOdds = formatOdds(midPrice);
+        const downOdds = formatOdds(1 - midPrice);
+        const upProb = formatProbability(midPrice);
+        const downProb = formatProbability(1 - midPrice);
+        initialOdds = ` | 赔率: UP ${upOdds} (${upProb}) / DOWN ${downOdds} (${downProb})`;
+      }
+    } catch (e) {
+      // 忽略错误，继续显示其他信息
+    }
+
     // 输出市场信息
     console.log(`\n${"=".repeat(60)}`);
     console.log(`📊 [MARKET] 市场切换`);
     console.log(`${"=".repeat(60)}`);
-    console.log(`市场 Slug: ${latest}`);
+    console.log(`市场 Slug: ${latest}${initialOdds}`);
     console.log(`条件 ID: ${conditionId}`);
     console.log(`Up 代币: ${upTokenId}`);
     console.log(`Down 代币: ${downTokenId}`);
@@ -337,15 +386,34 @@ async function main() {
       // 最佳卖价（最低要价）：用于买入
       const bestAsk = toNum(ob?.bestAsk?.price ?? ob?.asks?.[0]?.price, NaN);
 
+      // 计算中间价（用于显示赔率）
+      const midPrice = Number.isFinite(bestBid) && Number.isFinite(bestAsk) 
+        ? (bestBid + bestAsk) / 2 
+        : (Number.isFinite(bestBid) ? bestBid : bestAsk);
+
       // 获取持仓信息
       const upPos = await getPos(upTokenId!);
       const downPos = await getPos(downTokenId!);
 
-      // 输出当前价格和持仓信息
+      // 输出当前价格、赔率和持仓信息
       const timeStr = new Date().toLocaleTimeString('zh-CN');
+      
+      // 显示 UP 方向的赔率
+      const upPrice = Number.isFinite(midPrice) ? midPrice : NaN;
+      const upOdds = formatOdds(upPrice);
+      const upProb = formatProbability(upPrice);
+      
+      // 显示 DOWN 方向的赔率（DOWN 价格 = 1 - UP 价格）
+      const downPrice = Number.isFinite(upPrice) ? 1 - upPrice : NaN;
+      const downOdds = formatOdds(downPrice);
+      const downProb = formatProbability(downPrice);
+
       console.log(
         `[${timeStr}] 📈 价格 | Bid: ${formatNum(bestBid)} | Ask: ${formatNum(bestAsk)} | ` +
         `持仓: UP=${formatNum(upPos, 2)} DOWN=${formatNum(downPos, 2)}`
+      );
+      console.log(
+        `         🎲 赔率 | UP: ${upOdds} (${upProb}) | DOWN: ${downOdds} (${downProb})`
       );
 
       // 遍历 Up 和 Down 两个方向的代币
