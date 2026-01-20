@@ -177,6 +177,10 @@ pm2 logs 15fenzhong
 ### 错误 2: "PM2 is not managing any process"
 **解决**: 先运行 `pm2 start ecosystem.config.cjs`，然后再 `pm2 save`
 
+### 错误 3: "module is not defined in ES module scope"
+**原因**: `package.json` 中设置了 `"type": "module"`，导致 `.js` 文件被当作 ES 模块
+**解决**: 使用 `ecosystem.config.cjs` 而不是 `ecosystem.config.js`（`.cjs` 扩展名表示 CommonJS 模块）
+
 ### 错误 3: "Cannot find module"
 **解决**: 运行 `npm install` 安装依赖
 
